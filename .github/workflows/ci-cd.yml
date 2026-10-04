@@ -1,0 +1,66 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Start timer
+        run: echo "PIPELINE_START=$(date +%s)" >> "$GITHUB_ENV"
+
+      # Each stage records its own outcome, so a failure is reported instead of stopping everything
+      - name: Build (install dependencies)
+        id: build
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          pip install -r requirements.txt 2>&1 | tee build.log
+
+      - name: Test
+        id: test
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          python -m pytest -q 2>&1 | tee test.log
+
+      - name: Security scan
+        id: security
+        if: steps.test.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          pip install pip-audit
+          pip-audit -r requirements.txt 2>&1 | tee security.log
+
+      - name: Docker build
+        id: docker
+        if: steps.security.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          docker build -t nexus-demo . 2>&1 | tee docker.log
+
+      - name: Report to NEXUS
+        if: always()
+        env:
+          NEXUS_API_URL: ${{ secrets.NEXUS_API_URL }}
+          OUTCOME_BUILD: ${{ steps.build.outcome }}
+          OUTCOME_TEST: ${{ steps.test.outcome }}
+          OUTCOME_SECURITY: ${{ steps.security.outcome }}
+          OUTCOME_DOCKER: ${{ steps.docker.outcome }}
+        run: python scripts/report.py
+
+      - name: Fail the workflow if any stage failed
+        if: steps.build.outcome == 'failure' || steps.test.outcome == 'failure' || steps.security.outcome == 'failure' || steps.docker.outcome == 'failure'
+        run: exit 1
