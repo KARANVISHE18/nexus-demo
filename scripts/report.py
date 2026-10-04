@@ -1,4 +1,4 @@
-"""Sends the pipeline result (status, failed stage, duration, logs) to the NEXUS backend."""
+"""Sends the pipeline result (status, stages, duration, logs, git info) to the NEXUS backend."""
 import json
 import os
 import sys
@@ -6,14 +6,22 @@ import time
 import urllib.request
 
 STAGES = ["build", "test", "security", "docker"]
+STATUS_MAP = {"success": "passed", "failure": "failed"}
 
 
-def tail(path, max_chars=3000):
+def read(path, default=""):
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
-            return f.read()[-max_chars:]
+            return f.read()
     except FileNotFoundError:
-        return ""
+        return default
+
+
+def read_int(path):
+    try:
+        return int(read(path, "0").strip() or 0)
+    except ValueError:
+        return 0
 
 
 def main():
@@ -27,13 +35,26 @@ def main():
     status = "failed" if failed_stage else "success"
     duration = int(time.time()) - int(os.getenv("PIPELINE_START", time.time()))
 
-    logs = tail(f"{failed_stage}.log") if failed_stage else ""
+    stages = [
+        {"name": s, "status": STATUS_MAP.get(outcomes[s], "skipped"), "duration": read_int(f"{s}.dur")}
+        for s in STAGES
+    ]
+    logs = read(f"{failed_stage}.log")[-3000:] if failed_stage else ""
+
+    repo = os.getenv("GITHUB_REPOSITORY", "local")
+    server = os.getenv("GITHUB_SERVER_URL", "https://github.com")
+    run_id = os.getenv("GITHUB_RUN_ID")
     payload = {
-        "pipeline_id": f"{os.getenv('GITHUB_REPOSITORY', 'local')}#{os.getenv('GITHUB_RUN_NUMBER', '0')}",
+        "pipeline_id": f"{repo}#{os.getenv('GITHUB_RUN_NUMBER', '0')}",
         "status": status,
         "failed_stage": failed_stage,
         "duration": duration,
         "logs": logs,
+        "branch": os.getenv("GITHUB_REF_NAME"),
+        "commit": os.getenv("GITHUB_SHA"),
+        "author": os.getenv("GITHUB_ACTOR"),
+        "run_url": f"{server}/{repo}/actions/runs/{run_id}" if run_id else None,
+        "stages": stages,
     }
     print("Stage outcomes:", outcomes)
     print("Sending to NEXUS:", {k: v for k, v in payload.items() if k != "logs"})

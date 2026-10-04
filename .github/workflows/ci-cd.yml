@@ -18,38 +18,29 @@ jobs:
       - name: Start timer
         run: echo "PIPELINE_START=$(date +%s)" >> "$GITHUB_ENV"
 
-      # Each stage records its own outcome, so a failure is reported instead of stopping everything
+      # Each stage records its own outcome + duration, so a failure is reported instead of stopping everything
       - name: Build (install dependencies)
         id: build
         continue-on-error: true
-        run: |
-          set -o pipefail
-          pip install -r requirements.txt 2>&1 | tee build.log
+        run: bash scripts/stage.sh build pip install -r requirements.txt
 
       - name: Test
         id: test
         if: steps.build.outcome == 'success'
         continue-on-error: true
-        run: |
-          set -o pipefail
-          python -m pytest -q 2>&1 | tee test.log
+        run: bash scripts/stage.sh test python -m pytest -q
 
       - name: Security scan
         id: security
         if: steps.test.outcome == 'success'
         continue-on-error: true
-        run: |
-          set -o pipefail
-          pip install pip-audit
-          pip-audit -r requirements.txt 2>&1 | tee security.log
+        run: bash scripts/stage.sh security bash -c "pip install pip-audit && pip-audit -r requirements.txt"
 
       - name: Docker build
         id: docker
         if: steps.security.outcome == 'success'
         continue-on-error: true
-        run: |
-          set -o pipefail
-          docker build -t nexus-demo . 2>&1 | tee docker.log
+        run: bash scripts/stage.sh docker docker build -t nexus-demo .
 
       - name: Report to NEXUS
         if: always()
