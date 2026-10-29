@@ -2,7 +2,7 @@ name: CI/CD
 
 on:
   push:
-    branches: [main]
+    branches: [main, "nexus-fix/**"]
   workflow_dispatch:
 
 jobs:
@@ -46,6 +46,7 @@ jobs:
         if: always()
         env:
           NEXUS_API_URL: ${{ secrets.NEXUS_API_URL }}
+          NEXUS_API_KEY: ${{ secrets.NEXUS_API_KEY }}
           OUTCOME_BUILD: ${{ steps.build.outcome }}
           OUTCOME_TEST: ${{ steps.test.outcome }}
           OUTCOME_SECURITY: ${{ steps.security.outcome }}

@@ -1,5 +1,5 @@
 """Tiny demo application that NEXUS monitors."""
-import requests
+import 
 from flask import Flask, jsonify
 
 app = Flask(__name__)
