@@ -1,5 +1,5 @@
 """Tiny demo application that NEXUS monitors."""
-import requests
+import urllib.request
 from flask import Flask, jsonify
 
 app = Flask(__name__)
@@ -16,8 +16,9 @@ def divide(a, b):
 
 
 def fetch_status(url):
-    """Uses the 'requests' library (remove it from requirements.txt to see a failure)."""
-    return requests.get(url, timeout=5).status_code
+    """Uses the standard library to fetch a URL's status code."""
+    with urllib.request.urlopen(url, timeout=5) as response:
+        return response.getcode()
 
 
 @app.get("/health")
